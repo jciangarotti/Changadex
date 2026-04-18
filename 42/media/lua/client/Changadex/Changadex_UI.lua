@@ -1,6 +1,8 @@
--- UI del Changadex: ventana con sidebar de categorias + grilla de items.
--- Items descubiertos salen con su icono e imagen; los no descubiertos aparecen
--- como silueta gris con "???" en lugar del nombre.
+-- UI del Changadex:
+--   * ChangadexWindow: ventana principal con sidebar de categorias + grilla.
+--   * ChangadexInfoWindow: popup con icono, nombre y descripcion del item.
+-- Items descubiertos salen con su icono; los no descubiertos aparecen como
+-- silueta gris con "???" en lugar del nombre.
 
 require "ISUI/ISCollapsableWindow"
 require "ISUI/ISPanel"
@@ -12,9 +14,19 @@ Changadex = Changadex or {}
 
 local FONT_SMALL = UIFont.Small
 local FONT_MED = UIFont.Medium
+local FONT_LARGE = UIFont.Large
 local FH_SMALL = getTextManager():getFontHeight(FONT_SMALL)
 local FH_MED = getTextManager():getFontHeight(FONT_MED)
+local FH_LARGE = getTextManager():getFontHeight(FONT_LARGE)
 local PAD = 8
+
+local function getItemIconName(scriptItem)
+    if not scriptItem then return nil end
+    if scriptItem:getIconsForTexture() and not scriptItem:getIconsForTexture():isEmpty() then
+        return scriptItem:getIconsForTexture():get(0)
+    end
+    return scriptItem:getIcon()
+end
 
 -------------------------------------------------
 -- Categorias (sidebar izquierdo)
@@ -105,7 +117,6 @@ function ChangadexItemGrid:rebuild()
     local list = catalog.byCategory[self.category] or {}
     local st = Changadex.getState()
 
-    -- Script items "normales" (no literatura con titulo propio)
     for _, scriptItem in ipairs(list) do
         local fullType = scriptItem:getFullName()
         local rec = st and st.found[fullType]
@@ -113,7 +124,7 @@ function ChangadexItemGrid:rebuild()
         local include = true
         if self.filterMode == "found" and not found then include = false end
         if self.filterMode == "missing" and found then include = false end
-        local displayName = (rec and rec.name) or scriptItem:getDisplayName() or fullType
+        local displayName = scriptItem:getDisplayName() or fullType
         if include and self.search ~= "" then
             if not string.find(string.lower(displayName), self.search, 1, true) then include = false end
         end
@@ -123,29 +134,7 @@ function ChangadexItemGrid:rebuild()
                 fullType = fullType,
                 found = found,
                 name = displayName,
-                rec = rec,
             })
-        end
-    end
-
-    -- Entradas por titulo especifico (revistas, periodicos, print media).
-    -- Cada titulo descubierto es una fila propia, asi se distingue de los demas.
-    if self.category == "Literature" and st and st.titles then
-        for title, rec in pairs(st.titles) do
-            local include = (self.filterMode ~= "missing")
-            if include and self.search ~= "" then
-                if not string.find(string.lower(title), self.search, 1, true) then include = false end
-            end
-            if include then
-                local scriptItem = getScriptManager():FindItem(rec.fullType)
-                table.insert(self.items, {
-                    scriptItem = scriptItem,
-                    fullType = rec.fullType,
-                    found = true,
-                    name = title,
-                    rec = rec,
-                })
-            end
         end
     end
 
@@ -175,6 +164,25 @@ function ChangadexItemGrid:onMouseWheel(del)
     local ms = self:maxScroll()
     if self.scroll > ms then self.scroll = ms end
     return true
+end
+
+-- Click izquierdo sobre un item descubierto: abre la ventana de info.
+function ChangadexItemGrid:onMouseDown(x, y)
+    local perRow = self:cellsPerRow()
+    for i, entry in ipairs(self.items) do
+        local idx = i - 1
+        local col = idx % perRow
+        local row = math.floor(idx / perRow)
+        local cx = col * self.cellW
+        local cy = row * self.cellH - self.scroll
+        if x >= cx and x < cx + self.cellW and y >= cy and y < cy + self.cellH then
+            if entry.found and Changadex.showInfo then
+                Changadex.showInfo(entry.scriptItem, entry.fullType)
+            end
+            return true
+        end
+    end
+    return false
 end
 
 function ChangadexItemGrid:prerender()
@@ -220,43 +228,23 @@ function ChangadexItemGrid:drawCell(entry, x, y, hovered)
     local iconX = x + pad
     local iconY = y + (self.cellH - self.iconSize) / 2
 
-    if hovered then
+    if hovered and entry.found then
         self:drawRect(x + 1, y + 1, self.cellW - 2, self.cellH - 2, 0.25, 1, 1, 1)
     end
     self:drawRectBorder(x, y, self.cellW, self.cellH, 0.3, 0.5, 0.5, 0.5)
 
     -- Icono
     local scriptItem = entry.scriptItem
-    local texture = nil
-    local iconName = scriptItem:getIcon()
-    if scriptItem:getIconsForTexture() and not scriptItem:getIconsForTexture():isEmpty() then
-        iconName = scriptItem:getIconsForTexture():get(0)
-    end
-    if iconName then
-        texture = tryGetTexture("Item_" .. iconName)
-    end
+    local iconName = getItemIconName(scriptItem)
+    local texture = iconName and tryGetTexture("Item_" .. iconName) or nil
 
     if entry.found then
         if texture then
             self:drawTextureScaledAspect2(texture, iconX, iconY, self.iconSize, self.iconSize, 1, 1, 1, 1)
         end
         local name = entry.name or (scriptItem and scriptItem:getDisplayName()) or entry.fullType
-        self:drawText(name, iconX + self.iconSize + pad, y + pad, 1, 1, 1, 1, FONT_SMALL)
-        local rec = entry.rec
-        if rec then
-            local howKeys = {
-                pickup = "UI_Changadex_VerbFound",
-                equip  = "UI_Changadex_VerbEquipped",
-                wear   = "UI_Changadex_VerbWorn",
-                read   = "UI_Changadex_VerbRead",
-                eat    = "UI_Changadex_VerbEaten",
-                drink  = "UI_Changadex_VerbEaten",
-                watch  = "UI_Changadex_VerbWatched",
-                listen = "UI_Changadex_VerbListened",
-            }
-            local howText = Changadex.text(howKeys[rec.how] or "UI_Changadex_VerbFound")
-            self:drawText(howText, iconX + self.iconSize + pad, y + pad + FH_SMALL + 2, 0.6, 0.85, 0.6, 1, FONT_SMALL)
-        end
+        local textY = y + (self.cellH - FH_SMALL) / 2
+        self:drawText(name, iconX + self.iconSize + pad, textY, 1, 1, 1, 1, FONT_SMALL)
     else
         -- Silueta: dibuja el mismo icono pero tintado negro/gris.
         if texture then
@@ -264,7 +252,8 @@ function ChangadexItemGrid:drawCell(entry, x, y, hovered)
         else
             self:drawRect(iconX, iconY, self.iconSize, self.iconSize, 0.8, 0.1, 0.1, 0.1)
         end
-        self:drawText(Changadex.text("UI_Changadex_Unknown"), iconX + self.iconSize + pad, y + pad, 0.7, 0.7, 0.7, 1, FONT_SMALL)
+        local textY = y + (self.cellH - FH_SMALL) / 2
+        self:drawText(Changadex.text("UI_Changadex_Unknown"), iconX + self.iconSize + pad, textY, 0.7, 0.7, 0.7, 1, FONT_SMALL)
     end
 end
 
@@ -441,4 +430,113 @@ function Changadex.toggleUI()
     win:initialise()
     win:addToUIManager()
     ChangadexWindow.instance = win
+end
+
+-------------------------------------------------
+-- Ventana de informacion (popup)
+-------------------------------------------------
+ChangadexInfoWindow = ISCollapsableWindow:derive("ChangadexInfoWindow")
+ChangadexInfoWindow.instance = nil
+
+function ChangadexInfoWindow:new(scriptItem, fullType)
+    local w, h = 360, 300
+    local x = (getCore():getScreenWidth() - w) / 2
+    local y = (getCore():getScreenHeight() - h) / 2
+    local o = ISCollapsableWindow:new(x, y, w, h)
+    setmetatable(o, self)
+    self.__index = self
+    o.scriptItem = scriptItem
+    o.fullType = fullType
+    o.resizable = false
+    o.title = Changadex.text("UI_Changadex_InfoTitle")
+    o.backgroundColor = { r = 0, g = 0, b = 0, a = 0.9 }
+    o.borderColor = { r = 0.6, g = 0.6, b = 0.6, a = 1 }
+    return o
+end
+
+function ChangadexInfoWindow:createChildren()
+    ISCollapsableWindow.createChildren(self)
+    local btnW, btnH = 100, FH_SMALL + 10
+    local btnX = (self.width - btnW) / 2
+    local btnY = self.height - btnH - PAD
+    self.btnClose = ISButton:new(btnX, btnY, btnW, btnH, Changadex.text("UI_Changadex_InfoClose"), self, ChangadexInfoWindow.close)
+    self.btnClose:initialise()
+    self:addChild(self.btnClose)
+end
+
+local function wrapText(text, font, maxW)
+    local lines = {}
+    local current = ""
+    for word in string.gmatch(text or "", "%S+") do
+        local tentative = current == "" and word or (current .. " " .. word)
+        if getTextManager():MeasureStringX(font, tentative) <= maxW then
+            current = tentative
+        else
+            if current ~= "" then table.insert(lines, current) end
+            current = word
+        end
+    end
+    if current ~= "" then table.insert(lines, current) end
+    return lines
+end
+
+function ChangadexInfoWindow:prerender()
+    ISCollapsableWindow.prerender(self)
+    local si = self.scriptItem
+    if not si then return end
+
+    local th = self:titleBarHeight()
+    local iconSize = 72
+    local iconX = (self.width - iconSize) / 2
+    local iconY = th + 16
+
+    -- Icono
+    local iconName = getItemIconName(si)
+    local texture = iconName and tryGetTexture("Item_" .. iconName) or nil
+    if texture then
+        self:drawTextureScaledAspect2(texture, iconX, iconY, iconSize, iconSize, 1, 1, 1, 1)
+    else
+        self:drawRect(iconX, iconY, iconSize, iconSize, 0.5, 0.2, 0.2, 0.2)
+    end
+
+    -- Nombre
+    local name = si:getDisplayName() or self.fullType or ""
+    local nameW = getTextManager():MeasureStringX(FONT_MED, name)
+    local nameY = iconY + iconSize + 10
+    self:drawText(name, (self.width - nameW) / 2, nameY, 1, 1, 1, 1, FONT_MED)
+
+    -- Categoria
+    local catalog = Changadex.buildCatalog()
+    local catKey = (catalog.itemCategory and catalog.itemCategory[self.fullType]) or (Changadex.getCategoryForItem and Changadex.getCategoryForItem(si)) or "Other"
+    local catLabel = Changadex.getCategoryLabel(catKey)
+    local catW = getTextManager():MeasureStringX(FONT_SMALL, catLabel)
+    local catY = nameY + FH_MED + 4
+    self:drawText(catLabel, (self.width - catW) / 2, catY, 0.7, 0.85, 0.95, 1, FONT_SMALL)
+
+    -- Descripcion
+    local desc = Changadex.getCategoryDescription(catKey)
+    local margin = 18
+    local maxW = self.width - margin * 2
+    local descY = catY + FH_SMALL + 14
+    local lines = wrapText(desc, FONT_SMALL, maxW)
+    for i, line in ipairs(lines) do
+        local lw = getTextManager():MeasureStringX(FONT_SMALL, line)
+        self:drawText(line, (self.width - lw) / 2, descY + (i - 1) * (FH_SMALL + 3), 0.95, 0.95, 0.95, 1, FONT_SMALL)
+    end
+end
+
+function ChangadexInfoWindow:close()
+    self:setVisible(false)
+    self:removeFromUIManager()
+    ChangadexInfoWindow.instance = nil
+end
+
+function Changadex.showInfo(scriptItem, fullType)
+    if ChangadexInfoWindow.instance then
+        ChangadexInfoWindow.instance:close()
+    end
+    local win = ChangadexInfoWindow:new(scriptItem, fullType)
+    win:initialise()
+    win:addToUIManager()
+    ChangadexInfoWindow.instance = win
 end

@@ -38,6 +38,22 @@ local function classifyFallback(scriptItem)
     return "Other"
 end
 
+local function categoryFor(scriptItem)
+    -- Overrides por ItemType (tienen prioridad sobre DisplayCategory):
+    -- PZ etiqueta flyers/fotos como "Junk" pero son leibles, asi que
+    -- los forzamos a Literature. Idem VHS/CD a Entertainment.
+    if scriptItem:isItemType(ItemType.LITERATURE) then return "Literature" end
+    if scriptItem.getRecordedMediaCat and scriptItem:getRecordedMediaCat() then
+        return "Entertainment"
+    end
+    local cat = scriptItem:getDisplayCategory()
+    if not cat or cat == "" or not VALID_KEY[cat] then
+        cat = classifyFallback(scriptItem)
+    end
+    return cat
+end
+Changadex.getCategoryForItem = categoryFor
+
 local function shouldInclude(scriptItem)
     if scriptItem:getObsolete() then return false end
     if scriptItem:isHidden() then return false end
@@ -53,6 +69,7 @@ end
 --   Changadex.Catalog = {
 --     byCategory = { [catKey] = { scriptItem1, scriptItem2, ... } },
 --     categories = { catKey1, catKey2, ... },     -- ordenadas
+--     itemCategory = { [fullName] = catKey },     -- lookup inverso
 --     total = N,
 --     totalByCategory = { [catKey] = N },
 --   }
@@ -61,6 +78,7 @@ function Changadex.buildCatalog(force)
 
     local byCategory = {}
     local totalByCategory = {}
+    local itemCategory = {}
     local total = 0
 
     local allItems = getScriptManager():getAllItems()
@@ -68,22 +86,10 @@ function Changadex.buildCatalog(force)
     for i = 0, size - 1 do
         local scriptItem = allItems:get(i)
         if shouldInclude(scriptItem) then
-            local cat
-            -- Overrides por ItemType (tienen prioridad sobre DisplayCategory):
-            -- PZ etiqueta flyers/fotos como "Junk" pero son leibles, asi que
-            -- los forzamos a Literature. Idem VHS/CD a Entertainment.
-            if scriptItem:isItemType(ItemType.LITERATURE) then
-                cat = "Literature"
-            elseif scriptItem.getRecordedMediaCat and scriptItem:getRecordedMediaCat() then
-                cat = "Entertainment"
-            else
-                cat = scriptItem:getDisplayCategory()
-                if not cat or cat == "" or not VALID_KEY[cat] then
-                    cat = classifyFallback(scriptItem)
-                end
-            end
+            local cat = categoryFor(scriptItem)
             if not byCategory[cat] then byCategory[cat] = {} end
             table.insert(byCategory[cat], scriptItem)
+            itemCategory[scriptItem:getFullName()] = cat
             totalByCategory[cat] = (totalByCategory[cat] or 0) + 1
             total = total + 1
         end
@@ -115,6 +121,7 @@ function Changadex.buildCatalog(force)
     Changadex.Catalog = {
         byCategory = byCategory,
         categories = categories,
+        itemCategory = itemCategory,
         total = total,
         totalByCategory = totalByCategory,
     }
@@ -129,8 +136,16 @@ function Changadex.getCategoryLabel(catKey)
     return catKey
 end
 
--- Conteos para la UI. Literatura suma los titulos descubiertos (revistas,
--- periodicos) aparte del conteo de script items.
+-- Descripcion de flavor derivada de la categoria del item.
+function Changadex.getCategoryDescription(catKey)
+    if not catKey then catKey = "Other" end
+    local key = "UI_Changadex_Desc_" .. catKey
+    local tr = Changadex.text(key)
+    if tr and tr ~= key then return tr end
+    return Changadex.text("UI_Changadex_Desc_Other")
+end
+
+-- Conteo de items descubiertos por categoria.
 function Changadex.getProgressForCategory(catKey, player)
     local catalog = Changadex.buildCatalog()
     local list = catalog.byCategory[catKey] or {}
@@ -141,12 +156,6 @@ function Changadex.getProgressForCategory(catKey, player)
         for _, scriptItem in ipairs(list) do
             if st.found[scriptItem:getFullName()] then
                 foundCount = foundCount + 1
-            end
-        end
-        if catKey == "Literature" and st.titles then
-            for _ in pairs(st.titles) do
-                foundCount = foundCount + 1
-                total = total + 1
             end
         end
     end
@@ -164,12 +173,6 @@ function Changadex.getOverallProgress(player)
                 if st.found[scriptItem:getFullName()] then
                     foundCount = foundCount + 1
                 end
-            end
-        end
-        if st.titles then
-            for _ in pairs(st.titles) do
-                foundCount = foundCount + 1
-                total = total + 1
             end
         end
     end
