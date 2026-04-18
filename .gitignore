@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*~
+
+# Secretos / herramientas locales (por si acaso)
+.claude/
+.env
+.env.*
+*.local
+
+# Logs temporales
+*.log
+console.txt

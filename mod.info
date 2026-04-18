@@ -1,0 +1,8 @@
+name=Changadex
+id=Changadex
+author=ciang
+modversion=0.6.1
+versionMin=42.0
+description=Coleccionista de items: marca cada item del juego al recogerlo, leerlo o equiparlo. Con porcentaje de avance por categoria.
+poster=poster.png
+icon=icon.png
