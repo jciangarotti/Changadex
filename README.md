@@ -47,7 +47,8 @@ can mark them manually from the right-click menu.
 ## Usage
 
 - Press **N** (rebindable under *Options → Key Bindings → Changadex*)
-  to toggle the collection window.
+  **or** click the Changadex icon at the bottom of the left-side icon
+  column to toggle the collection window.
 - The window shows all items grouped by category. Undiscovered entries
   render as a dark silhouette with `???` in place of the name.
 - Right-click an item in the inventory UI to discover it or view its

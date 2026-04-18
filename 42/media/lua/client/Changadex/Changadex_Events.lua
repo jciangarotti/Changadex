@@ -1,7 +1,9 @@
 -- Hooks de descubrimiento:
---   * OnContainerUpdate: escanea el inventario del jugador y marca items
---     nuevos. Es el unico hook automatico; el resto de la descubierta va
---     por el menu contextual (clic derecho).
+--   * OnPlayerUpdate: escanea el inventario del jugador cada 500ms y marca
+--     los items nuevos. Cubre TODAS las formas en que un item puede llegar
+--     al inventario (drag-and-drop, context menu, pickup, loot all, etc.)
+--     — OnContainerUpdate no dispara en transferencias normales, solo en
+--     foraging / vehiculos / moveables, por eso lo cambiamos.
 --   * OnGameStart: construye el catalogo y hace un escaneo inicial
 --     SILENCIOSO (sin halo text) para no spamear con todo lo que ya
 --     tenias encima al cargar la partida.
@@ -37,14 +39,13 @@ function Changadex.scanPlayerInventory(player, silent)
     scanContainer(inv, player, seen, silent)
 end
 
--- Throttle: OnContainerUpdate puede dispararse mucho. Solo escaneamos si
--- paso un tiempo minimo desde el ultimo scan.
+-- Throttle: OnPlayerUpdate fira por frame (60Hz). Escaneamos a lo sumo
+-- cada 500ms para mantener el costo bajo.
 local lastScanMs = 0
-local SCAN_COOLDOWN_MS = 250
+local SCAN_COOLDOWN_MS = 500
 
-local function onContainerUpdate()
-    local player = getPlayer()
-    if not player then return end
+local function onPlayerUpdate(player)
+    if not player or player ~= getPlayer() then return end
     local now = getTimestampMs and getTimestampMs() or 0
     if now - lastScanMs < SCAN_COOLDOWN_MS then return end
     lastScanMs = now
@@ -58,8 +59,10 @@ local function onGameStart()
         -- Escaneo inicial silencioso: evita el spam de halo text con todo
         -- lo que ya tenias en el inventario al cargar la partida.
         Changadex.scanPlayerInventory(player, true)
+        -- Marcamos el timestamp para que el primer tick no re-escanee.
+        lastScanMs = getTimestampMs and getTimestampMs() or 0
     end
 end
 
-Events.OnContainerUpdate.Add(onContainerUpdate)
+Events.OnPlayerUpdate.Add(onPlayerUpdate)
 Events.OnGameStart.Add(onGameStart)

@@ -5,6 +5,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-04-18
+
+### Added
+- Sidebar button: a Changadex icon is appended at the bottom of the
+  left-side vertical icon column (the one hosting Inventory / Health /
+  Crafting / ...). Clicking it toggles the collection window — same
+  behaviour as pressing the bound key.
+
+### Fixed
+- Auto-discovery now actually triggers on regular inventory transfers.
+  Previously the mod hooked `OnContainerUpdate`, but PZ only fires that
+  event for a handful of paths (vehicles, foraging, moveables, BBQ) —
+  not for the normal drag-and-drop / "grab" / "loot all" flow. Replaced
+  with a throttled `OnPlayerUpdate` scan (500 ms) that catches every
+  item that ends up in the player's inventory tree regardless of how it
+  got there.
+
 ## [0.7.3] - 2026-04-18
 
 ### Changed
